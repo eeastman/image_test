@@ -24,6 +24,8 @@ def getPoolingLayers(batch, batch_size):
             with tf.name_scope("content_vgg"):
                 vgg.build(images)
 
+            # Saves pooling layers from vgg16 
+
             # pool1 = sess.run(vgg.pool1, feed_dict=feed_dict)
             # np.save(os.path.join(layerPath + 'pool1.npy'),pool1)
             
@@ -43,23 +45,27 @@ def getPoolingLayers(batch, batch_size):
 
 def pca(batch_size):
     # For one pooling layer right now (easily will update after)
-    X = np.load('./pool_layers/pool5.npy')
+    X = np.load('./pool_layers/pool5.npy') # DIRECTOrt
     X = X.reshape((batch_size, -1))
 
+    # PCA transform, 200
     pca = PCA(n_components=200)
     pca.fit(X)
     X_pca = pca.fit_transform(X)
 
-    # Make sure there is a "pca_layers" directory or change path
+    # DIRECTORY Make sure there is a "pca_layers" directory or change path
     np.save('./pca_layers/pool5.npy', X_pca)
 
     return X_pca
 
 def run_svm():
-    X_imgs = np.load('./pca_layers/pool5.npy') # According to which pooling layer
+    X_imgs = np.load('./pca_layers/pool5.npy') # DIRECTORY According to which pooling layer
     y_labs = np.array([1, 0]) # NEED LABELS 
     # y_labs = np.load('') # INSERT LABEL FILE HERE
+    
+    # SVM function
     clf = svm.SVC(kernel='linear', C=1).fit(X_imgs, y_labs)
+    # Cross Validation function
     scores = cross_val_score(clf, X_imgs, y_labs, cv=1) # CHANGE 'CV' WHEN MORE DATA
     # Will print: TODO SAVE?
     print("Accuracy: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std() * 2))
@@ -83,7 +89,7 @@ def loadImages(directory):
     return batch, batch_size
 
 def main():
-    # Directory is path of all the images to classify
+    # DIRECTORY is path of all the images to classify
     directory = './test_data/'
     batch, batch_size = loadImages(directory)
     x = getPoolingLayers(batch, batch_size)
