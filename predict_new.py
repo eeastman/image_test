@@ -5,13 +5,15 @@ import tensorflow as tf
 from sklearn.decomposition import PCA
 from sklearn import svm
 from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import train_test_split
 
 import vgg16
 import utils
 import csv
+from predict_utils import *
 
 
-def getPoolingLayers(batch, batch_size):
+def getLayers(batch, batch_size):
     # with tf.Session(config=tf.ConfigProto(gpu_options=(tf.GPUOptions(per_process_gpu_memory_fraction=0.7)))) as sess:
     with tf.device('/cpu:0'):
         with tf.Session() as sess:
@@ -91,17 +93,17 @@ def getPoolingLayers(batch, batch_size):
 
             return layers, prob
 
-def pca(batch_size, pool_layer, component_used=None):
+def pca(batch_size, vgg_layer, component_used=None):
     '''
     Inputs:
         - batch_size
-        - pool_layer
+        - vgg_layer
         - component_used
     Outputs:
         - X_pca
     '''
     # For one pooling layer right now
-    X = pool_layer.reshape((batch_size, -1))
+    X = vgg_layer.reshape((batch_size, -1))
 
     pca = PCA(n_components=200) # n_components = min(200, n_samples)
     pca.fit(X)
@@ -110,7 +112,7 @@ def pca(batch_size, pool_layer, component_used=None):
     # print("Variance Explained", pca.explained_variance_ratio_)
     return X_pca if not component_used else X_pca[component_used]
 
-def run_svm(batch_size, labels, cross_val, layer, trials):
+def run_svm(layer, labels, cross_val, trials):
     '''
     Inputs:
         - batch_size
@@ -119,58 +121,24 @@ def run_svm(batch_size, labels, cross_val, layer, trials):
         - layer
         - trials
     Output:
-        - total_mean: list of accuracy (float) for each trial
-        - total_std: list of std dev (float) for each trial
+        - accuracy: list of accuracy (float) for each trial
     '''
-    X_imgs = layer
-    X_imgs = X_imgs.reshape((batch_size, -1))
-    y_labs = np.array(labels)
-    total_mean, total_std = [], []
+    
+    accuracy = []
+    print(layer.size, layer.shape)
+
     for i in range(trials):
-        clf = svm.SVC(kernel='linear', C=1).fit(X_imgs, y_labs)
-        scores = cross_val_score(clf, X_imgs, y_labs, cv=cross_val)
-        # print(i, "Accuracy: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std() * 2))
-        total_mean.append(scores.mean())
-        total_std.append(scores.std())
-    print("AVG Accuracy: %0.2f (+/- %0.2f)" % (sum(total_mean)/trials, (sum(total_std)/trials) * 2)) # TODO
+        train_layer, test_layer, y_train, y_test = train_test_split(layer, labels, test_size=0.2)
 
-    return (total_mean, total_std)
+        X_train = train_layer.reshape((train_layer.shape[0], -1))
+        X_test = test_layer.reshape((test_layer.shape[0], -1))
+        y_train, y_test = np.array(y_train), np.array(y_test)
 
-def loadImages(directory, img_paths):
-    '''
-    Inputs:
-        - directory
-        - img_paths
-    Outputs:
-        tuple of length 3 ---> (batch, batch_size, labels)
-        - batch
-        - batch_size
-        - labels
-    '''
-    if img_paths != '':
-        f = open(img_paths,'r')
-        img_paths = f.read().split('\n')
-    else:
-        img_paths = sorted(os.listdir(directory))
-    images = []
-    labels = []
-    batch_size = 0
+        clf = svm.SVC(kernel='linear', C=1).fit(X_train, y_train)
+        # scores = cross_val_score(clf, X_imgs, y_labs, cv=cross_val)
+        accuracy.append(clf.score(X_test, y_test))
 
-    for path in img_paths:
-        if path == '':
-            continue
-        batch_size += 1
-        img_path = directory + path[:-2]
-        img = utils.load_image(img_path)
-        resize = img.reshape((1, 224, 224, 3))
-        images.append(resize)
-        labels.append(path[-2:])
-
-    batch = np.zeros((batch_size, 224, 224, 3))
-    for i, image in enumerate(images):
-        batch[i, :, :, :] = image
-
-    return batch, batch_size, labels
+    return accuracy
 
 def main(directory, img_paths, output_file=None, cross_val=5,
     num_trials=1, use_pca=False, component_used=None):
@@ -188,36 +156,40 @@ def main(directory, img_paths, output_file=None, cross_val=5,
     '''
 
     batch, batch_size, labels = loadImages(directory, img_paths)
-    
-    layers, prob = getPoolingLayers(batch, batch_size)
+
+    layers, prob = getLayers(batch, batch_size)
     
     results = {}
     for layer_name, layer in layers.items():
-        final_layer = layer
+
         if use_pca:
-            final_layer = pca(batch_size, laye, component_used)
-        mean_acc, std = run_svm(batch_size, labels, cross_val, final_layer, num_trials)
-        results[layer_name] = (mean_acc, std)
+            layer = pca(batch_size, layer, component_used)
+
+        accuracy = run_svm(layer, labels, cross_val, num_trials)
+        results[layer_name] = accuracy
 
     print(results)
-    with open(output_file, 'w') as csv_file:
-        writer = csv.writer(csv_file)
-        for key, value in results.items():
-            for i in range(len(value[0])):
-                writer.writerow([key, value[0][i], value[1][i]])
+
+    write_accuracies(output_file, results)
+
+# Either pass or load layers
+
 
 if __name__ == '__main__':
     # MAKE SURE ALL PATHS ARE CORRECT
-    directory = './interaction_images/'
-    img_paths = './interaction_imgs.txt' # TEXT FILE WITH LIST OF IMAGE NAMES AND LABELS
-                                         # WHERE EACH LINE HAS "name_of_image.ext label"
-    output_file = './interactions_output_with_pca.csv'
+    directory = '/om/user/eeastman/interaction_images/'
+    img_paths = '/om/user/eeastman/interaction_imgs.txt' # TEXT FILE WITH LIST OF IMAGE NAMES AND LABELS
+                                                        # WHERE EACH LINE HAS "name_of_image.ext label"
+    vgg_layers_path = '/om/user/eeastman/vgg_layers_path/'
+    pca_layers_path = '/om/user/eeastman/pca_layers_path/'
+    
+    # FIX SO BACK TO ORIG
+    output_file = './interactions_output_predict_5trials_predict5_11-21.csv'
 
     # PARAMETERS
     use_pca = True
     cross_val = 5
-    num_trials = 20
-    component_used = 49
+    num_trials = 5
+    pca_component_used = None
 
-    main(directory, img_paths, output_file, cross_val, num_trials, use_pca, component_used)
-
+    main(directory, img_paths, output_file, cross_val, num_trials, use_pca, pca_component_used)
