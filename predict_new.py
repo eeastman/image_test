@@ -10,97 +10,22 @@ from sklearn.model_selection import train_test_split
 import vgg16
 import utils
 import csv
+import datetime
 from predict_utils import *
 
-
-def getLayers(batch, batch_size):
-    # with tf.Session(config=tf.ConfigProto(gpu_options=(tf.GPUOptions(per_process_gpu_memory_fraction=0.7)))) as sess:
-    with tf.device('/cpu:0'):
-        with tf.Session() as sess:
-            images = tf.placeholder("float", [batch_size, 224, 224, 3])
-            feed_dict = {images: batch}
-
-            vgg = vgg16.Vgg16()
-            with tf.name_scope("content_vgg"):
-                vgg.build(images)
-
-            layers = {}
-
-            conv1_1 = sess.run(vgg.conv1_1, feed_dict=feed_dict)
-            layers["conv1_1"] = conv1_1
-
-            conv1_2 = sess.run(vgg.conv1_2, feed_dict=feed_dict)
-            layers["conv1_2"] = conv1_2
-
-            pool1 = sess.run(vgg.pool1, feed_dict=feed_dict)
-            layers["pool1"] = pool1
-
-            conv2_1 = sess.run(vgg.conv2_1, feed_dict=feed_dict)
-            layers["conv2_1"] = conv2_1
-
-            conv2_2 = sess.run(vgg.conv2_2, feed_dict=feed_dict)
-            layers["conv2_2"] = conv2_2
-
-            pool2 = sess.run(vgg.pool2, feed_dict=feed_dict)
-            layers["pool2"] = pool2
-
-            conv3_1 = sess.run(vgg.conv3_1, feed_dict=feed_dict)
-            layers["conv3_1"] = conv3_1
-
-            conv3_2 = sess.run(vgg.conv3_2, feed_dict=feed_dict)
-            layers["conv3_2"] = conv3_2
-
-            conv3_3 = sess.run(vgg.conv3_3, feed_dict=feed_dict)
-            layers["conv3_3"] = conv3_3
-        
-            pool3 = sess.run(vgg.pool3, feed_dict=feed_dict)
-            layers["pool3"] = pool3
-
-            conv4_1 = sess.run(vgg.conv4_1, feed_dict=feed_dict)
-            layers["conv4_1"] = conv4_1
-
-            conv4_2 = sess.run(vgg.conv4_2, feed_dict=feed_dict)
-            layers["conv4_2"] = conv4_2
-
-            conv4_3 = sess.run(vgg.conv4_3, feed_dict=feed_dict)
-            layers["conv4_3"] = conv4_3
-            
-            pool4 = sess.run(vgg.pool4, feed_dict=feed_dict)
-            layers["pool4"] = pool4
-
-            conv5_1 = sess.run(vgg.conv5_1, feed_dict=feed_dict)
-            layers["conv5_1"] = conv5_1
-
-            conv5_2 = sess.run(vgg.conv5_2, feed_dict=feed_dict)
-            layers["conv5_2"] = conv5_2
-
-            conv5_3 = sess.run(vgg.conv5_3, feed_dict=feed_dict)
-            layers["conv5_3"] = conv5_3
-            
-            pool5 = sess.run(vgg.pool5, feed_dict=feed_dict)
-            layers["pool5"] = pool5
-
-            fc6 = sess.run(vgg.fc6, feed_dict=feed_dict)
-            layers["fc6"] = fc6
-
-            fc7 = sess.run(vgg.fc7, feed_dict=feed_dict)
-            layers["fc7"] = fc7
-
-            fc8 = sess.run(vgg.fc8, feed_dict=feed_dict)
-            layers["fc8"] = fc8
-
-            prob = sess.run(vgg.prob, feed_dict=feed_dict)
-
-            return layers, prob
-
-def pca(batch_size, vgg_layer, component_used=None):
+def pca(batch_size, vgg_layer, component=None):
     '''
-    Inputs:
-        - batch_size
-        - vgg_layer
-        - component_used
-    Outputs:
-        - X_pca
+    Takes a VGG16 layer and returns a transformed PCA version.
+    
+    TODO: finalize
+    
+    Parameters:
+        - batch_size: int representing the total number of images
+        - vgg_layer: numpy array representing a vgg16 layer
+        - component: int representing the component to use
+    
+    Returns:
+        - X_pca: numpy array 
     '''
     # For one pooling layer right now
     X = vgg_layer.reshape((batch_size, -1))
@@ -112,22 +37,25 @@ def pca(batch_size, vgg_layer, component_used=None):
     # print("Variance Explained", pca.explained_variance_ratio_)
     return X_pca if not component_used else X_pca[component_used]
 
-def run_svm(layer, labels, cross_val, trials):
-    '''
-    Inputs:
-        - batch_size
-        - labels
-        - cross_val
-        - layer
-        - trials
-    Output:
-        - accuracy: list of accuracy (float) for each trial
-    '''
-    
-    accuracy = []
-    print(layer.size, layer.shape)
+    # return X_pca if not component_used else X_pca[:,:component_used]
 
-    for i in range(trials):
+def run_svm(layer, labels, num_trials, cross_val):
+    '''
+    Runs SVM on the given layer over the number of trials and returns
+    the accuracy of each trial
+
+    Parameters:
+        - layer: numpy array of NN layer
+        - labels: numpy array of labels associated with each image (index)
+        - num_trials: int representing the number of trials to run on layer
+        - cross_val: int representing the number of cross validation folds
+
+    Returns:
+        - accuracy: list of accuracy (float) for each trial (length=num_trials)
+    '''    
+    accuracy = []
+
+    for i in range(num_trials):
         train_layer, test_layer, y_train, y_test = train_test_split(layer, labels, test_size=0.2)
 
         X_train = train_layer.reshape((train_layer.shape[0], -1))
@@ -140,24 +68,30 @@ def run_svm(layer, labels, cross_val, trials):
 
     return accuracy
 
-def main(directory, img_paths, output_file=None, cross_val=5,
-    num_trials=1, use_pca=False, component_used=None):
+
+def main(directory, img_paths, vgg_layers_path=None, num_trials=1, 
+    use_pca=False, component_used=None, cross_val=5):
     '''
-    Inputs:
-        - directory
-        - img_paths
-        - output_file
-        - cross_val
-        - num_trials
-        - use_pca
-        - component_used
-    Output:
-        - writes to output file ---> layer, accuracy, std dev
+    Parameters:
+        - directory: str representing the path to the directory where the images are
+        - img_paths: str represnting the txt file where each line has the file name of each image
+        - vgg_layers_path: str representing the path to the directory 
+            where the layers are (or should be saved)
+        - num_trials: int representing the number of trials to run on layer
+        - use_pca: bool representing whether or not to use PCA
+        - component_used: int representing the component to use for PCA
+        - cross_val: int representing the number of cross validation folds
+
+    Returns:
+        None
     '''
+    output_file, plot_title, fig_name = build_names(num_trials, use_pca, component_used)
 
     batch, batch_size, labels = loadImages(directory, img_paths)
 
-    layers, prob = getLayers(batch, batch_size)
+    layers = getLayers(batch, batch_size, vgg_layers_path)
+
+    # TODO: PCA here save?
     
     results = {}
     for layer_name, layer in layers.items():
@@ -168,28 +102,25 @@ def main(directory, img_paths, output_file=None, cross_val=5,
         accuracy = run_svm(layer, labels, cross_val, num_trials)
         results[layer_name] = accuracy
 
-    print(results)
+    print(results)   
 
     write_accuracies(output_file, results)
 
-# Either pass or load layers
+    make_error_bar_plot(results, plot_title, fig_name)
 
 
 if __name__ == '__main__':
     # MAKE SURE ALL PATHS ARE CORRECT
     directory = '/om/user/eeastman/interaction_images/'
-    img_paths = '/om/user/eeastman/interaction_imgs.txt' # TEXT FILE WITH LIST OF IMAGE NAMES AND LABELS
+    img_paths = directory + 'interaction_imgs.txt' # TEXT FILE WITH LIST OF IMAGE NAMES AND LABELS
                                                         # WHERE EACH LINE HAS "name_of_image.ext label"
-    vgg_layers_path = '/om/user/eeastman/vgg_layers_path/'
-    pca_layers_path = '/om/user/eeastman/pca_layers_path/'
+    vgg_layers_path = '/om/user/eeastman/layers/vgg/'
     
-    # FIX SO BACK TO ORIG
-    output_file = './interactions_output_predict_5trials_predict5_11-21.csv'
-
     # PARAMETERS
     use_pca = True
     cross_val = 5
-    num_trials = 5
-    pca_component_used = None
+    num_trials = 20
+    pca_component_used = 49
+    load_layers = True
 
-    main(directory, img_paths, output_file, cross_val, num_trials, use_pca, pca_component_used)
+    main(directory, img_paths, vgg_layers_path, num_trials, use_pca, pca_component_used, cross_val)
