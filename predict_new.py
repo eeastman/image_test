@@ -1,17 +1,10 @@
-import os
-import numpy as np
-import tensorflow as tf
-
-from sklearn.decomposition import PCA
 from sklearn import svm
+from sklearn.decomposition import PCA
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import train_test_split
 
-import vgg16
-import utils
-import csv
-import datetime
 from predict_utils import *
+
 
 def pca(batch_size, vgg_layer, component=None):
     '''
@@ -35,11 +28,11 @@ def pca(batch_size, vgg_layer, component=None):
     X_pca = pca.fit_transform(X)
 
     # print("Variance Explained", pca.explained_variance_ratio_)
-    return X_pca if not component_used else X_pca[component_used]
 
-    # return X_pca if not component_used else X_pca[:,:component_used]
+    return X_pca if not component else X_pca[component]
+    # return X_pca if not component else X_pca[:,:component]
 
-def run_svm(layer, labels, num_trials, cross_val):
+def run_svm(layer, labels, num_trials, leave_out, cross_val=5):
     '''
     Runs SVM on the given layer over the number of trials and returns
     the accuracy of each trial
@@ -48,6 +41,7 @@ def run_svm(layer, labels, num_trials, cross_val):
         - layer: numpy array of NN layer
         - labels: numpy array of labels associated with each image (index)
         - num_trials: int representing the number of trials to run on layer
+        - leave_out: bool representing whether or not to use leave_n_out
         - cross_val: int representing the number of cross validation folds
 
     Returns:
@@ -56,7 +50,10 @@ def run_svm(layer, labels, num_trials, cross_val):
     accuracy = []
 
     for i in range(num_trials):
-        train_layer, test_layer, y_train, y_test = train_test_split(layer, labels, test_size=0.2)
+        if leave_out:
+            train_layer, test_layer, y_train, y_test = leave_n_out(layer, labels, 2, 4)
+        else:
+            train_layer, test_layer, y_train, y_test = train_test_split(layer, labels, test_size=0.2)
 
         X_train = train_layer.reshape((train_layer.shape[0], -1))
         X_test = test_layer.reshape((test_layer.shape[0], -1))
@@ -70,7 +67,7 @@ def run_svm(layer, labels, num_trials, cross_val):
 
 
 def main(directory, img_paths, vgg_layers_path=None, num_trials=1, 
-    use_pca=False, component_used=None, cross_val=5):
+    use_pca=False, component_used=None, leave_out=False, cross_val=5):
     '''
     Parameters:
         - directory: str representing the path to the directory where the images are
@@ -80,12 +77,15 @@ def main(directory, img_paths, vgg_layers_path=None, num_trials=1,
         - num_trials: int representing the number of trials to run on layer
         - use_pca: bool representing whether or not to use PCA
         - component_used: int representing the component to use for PCA
+        - leave_out: bool representing whether or not to use leave_n_out
         - cross_val: int representing the number of cross validation folds
 
     Returns:
         None
     '''
     output_file, plot_title, fig_name = build_names(num_trials, use_pca, component_used)
+
+    output_file = './interactions_leave-2-out_5trials_pca_11-25.csv'
 
     batch, batch_size, labels = loadImages(directory, img_paths)
 
@@ -99,7 +99,7 @@ def main(directory, img_paths, vgg_layers_path=None, num_trials=1,
         if use_pca:
             layer = pca(batch_size, layer, component_used)
 
-        accuracy = run_svm(layer, labels, cross_val, num_trials)
+        accuracy = run_svm(layer, labels, num_trials, leave_out)
         results[layer_name] = accuracy
 
     print(results)   
@@ -117,10 +117,9 @@ if __name__ == '__main__':
     vgg_layers_path = '/om/user/eeastman/layers/vgg/'
     
     # PARAMETERS
+    num_trials = 5
     use_pca = True
-    cross_val = 5
-    num_trials = 20
     pca_component_used = 49
-    load_layers = True
+    leave_out = True
 
-    main(directory, img_paths, vgg_layers_path, num_trials, use_pca, pca_component_used, cross_val)
+    main(directory, img_paths, vgg_layers_path, num_trials, use_pca, pca_component_used, leave_out)
