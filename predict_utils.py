@@ -1,19 +1,16 @@
 import os
+
+import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 
-import matplotlib.pyplot as plt
 plt.switch_backend('agg')
-
-from sklearn.decomposition import PCA
-from sklearn import svm
-from sklearn.model_selection import cross_val_score
-from sklearn.model_selection import train_test_split
 
 import vgg16
 import utils
 import csv
 import datetime
+import random
 
 LAYER_NAMES = ['conv1_1', 'conv1_2', 'pool1', 'conv2_1', 'conv2_2', 'pool2', 
     'conv3_1', 'conv3_2', 'conv3_3', 'pool3', 
@@ -189,7 +186,7 @@ def getLayers(batch, batch_size, vgg_layers_path):
             fc8 = sess.run(vgg.fc8, feed_dict=feed_dict)
             layers["fc8"] = fc8
 
-            prob = sess.run(vgg.prob, feed_dict=feed_dict)
+            # prob = sess.run(vgg.prob, feed_dict=feed_dict)
 
             saveLayers(layers, vgg_layers_path)
 
@@ -281,6 +278,46 @@ def build_names(num_trials, use_pca, component_used):
     
 
     return output_file, plot_title, fig_name
+
+def leave_n_out(layer, labels, n=2, num_scene=4):
+    '''
+    TODO: Description
+
+    Assumes:
+        - 14 different scenes
+        - 4 of the same scene (mutual gaze, joint attention, no interact 1, no interact 2)
+
+    Parameters:
+        - layer: numpy array of NN layer
+        - labels: numpy array of labels associated with each image (index)
+        - n: int representing the number of scenes to hold out for test set
+        - num_scene: int representing number of images in one scene
+
+    Returns:
+        - train_layer: numpy array of NN layer used for training
+        - test_layer: numpy array of NN layer used for testing
+        - y_train: numpy array of labels associated with each image (index) used for training
+        - y_test: numpy array of labels associated with each image (index) used for testing
+    '''
+    test_indices = [i*num_scene-num_scene for i in sorted(random.sample(range(1, 14), n))]
+    indices = sorted([j for i in test_indices for j in range(i, i+num_scene)])
+
+    y_test = np.array([l for i, l in enumerate(labels) if i in indices])
+    y_train = np.array([l for i, l in enumerate(labels) if i not in indices])
+
+    test_layer = layer[test_indices[0]:test_indices[0]+num_scene,...,:]
+
+    for i in test_indices[1:]:
+        test_layer = np.concatenate((test_layer, layer[i:i+num_scene,...,:]), axis=0)
+
+    train_layer = layer[:test_indices[0],...,:]
+
+    for i in range(1,len(test_indices[1:])+1):
+        train_layer = np.concatenate((train_layer, layer[test_indices[i-1]+num_scene:test_indices[i],...,:]), axis=0)
+
+    train_layer = np.concatenate((train_layer, layer[test_indices[-1]+num_scene:,...,:]), axis=0)
+
+    return train_layer, test_layer, y_train, y_test
 
 if __name__ == '__main__':
     # write()
