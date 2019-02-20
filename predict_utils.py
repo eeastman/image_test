@@ -208,6 +208,7 @@ def write_accuracies(output_file, results):
     with open(output_file, 'w') as csv_file:
         writer = csv.writer(csv_file)
         for layer, accuracies in results.items():
+            # writer.writerow(accuracies)
             writer.writerow([layer]+accuracies)
 
 def make_error_bar_plot(results, title, fig_name):
@@ -249,7 +250,7 @@ def make_error_bar_plot(results, title, fig_name):
     plt.tight_layout()
     plt.savefig(fig_name)
 
-def build_names(num_trials, use_pca, component_used):
+def build_names(num_trials, use_pca, component_used, leave_out, n=2):
     '''
     TODO: Description
 
@@ -257,6 +258,8 @@ def build_names(num_trials, use_pca, component_used):
         - num_trials: int representing the number of trials to run on layer
         - use_pca: bool representing whether or not to use PCA
         - component_used: int representing the component to use for PCA
+        - leave_out: bool representing whether or not to use leave_n_out
+        - n:
 
     Returns:
         tuple of length 3 ---> (output_file, plot_title, fig_name)
@@ -266,15 +269,17 @@ def build_names(num_trials, use_pca, component_used):
     '''
     d = datetime.date.today().strftime("%m-%d")
 
+    leave_str = "(leave %s out)" % (str(n)) if leave_out else ''
+
     if use_pca:
-        output_file = './interaction_PCA_%strials_%s.csv' % (str(num_trials), d)
-        fig_name = 'interaction_PCA_%s_%strials.png' % (d, str(num_trials))
-        plot_title = 'Accuracy for each layer without PCA (top %s components) over %s trials' % (str(component_used), str(num_trials))
+        output_file = './%s_PCA_%strials.csv' % (d, str(num_trials))
+        fig_name = '%s_PCA_%strials.png' % (d, str(num_trials))
+        plot_title = 'Accuracy for each layer without PCA (top %s components) over %s trials %s' % (str(component_used), str(num_trials), leave_str)
         #plot_title = 'Accuracy for each layer without PCA (50th component) over %s trials' % (str(num_trials))
     else:
-        output_file = './interaction_without_%strials_%s.csv' % (str(num_trials), d)
-        fig_name = 'interaction_%s_%strials.png' % (d, str(num_trials))
-        plot_title = 'Accuracy for each layer without PCA over %s trials' % (str(num_trials))
+        output_file = './%s_without_%strials.csv' % (d, str(num_trials))
+        fig_name = '%s_SVM_%strials.png' % (d, str(num_trials))
+        plot_title = 'Accuracy for each layer without PCA over %s trials %s' % (str(num_trials), leave_str)
     
 
     return output_file, plot_title, fig_name
@@ -284,7 +289,7 @@ def leave_n_out(layer, labels, n=2, num_scene=4):
     TODO: Description
 
     Assumes:
-        - 14 different scenes
+        - 13 different scenes
         - 4 of the same scene (mutual gaze, joint attention, no interact 1, no interact 2)
 
     Parameters:
@@ -299,23 +304,56 @@ def leave_n_out(layer, labels, n=2, num_scene=4):
         - y_train: numpy array of labels associated with each image (index) used for training
         - y_test: numpy array of labels associated with each image (index) used for testing
     '''
-    test_indices = [i*num_scene-num_scene for i in sorted(random.sample(range(1, 14), n))]
-    indices = sorted([j for i in test_indices for j in range(i, i+num_scene)])
 
-    y_test = np.array([l for i, l in enumerate(labels) if i in indices])
-    y_train = np.array([l for i, l in enumerate(labels) if i not in indices])
 
-    test_layer = layer[test_indices[0]:test_indices[0]+num_scene,...,:]
+    test_indices = [i*2 for i in sorted( random.sample(range(0, 12), n) )]
 
-    for i in test_indices[1:]:
-        test_layer = np.concatenate((test_layer, layer[i:i+num_scene,...,:]), axis=0)
+    all_test_indices = []
+    sub = []
+    # 13 different scenes
+    for i in test_indices:
+        all_test_indices.append(i)
+        all_test_indices.append(i+1)
+        all_test_indices.append(i+(2*13))
+        all_test_indices.append(i+1+(2*13))
+        sub.append(i)
+        sub.append(i+(2*13))
 
-    train_layer = layer[:test_indices[0],...,:]
+    all_test_indices = sorted(all_test_indices)
+    sub = sorted(sub)
 
-    for i in range(1,len(test_indices[1:])+1):
-        train_layer = np.concatenate((train_layer, layer[test_indices[i-1]+num_scene:test_indices[i],...,:]), axis=0)
+    y_test = np.array([l for i, l in enumerate(labels) if i in all_test_indices])
+    y_train = np.array([l for i, l in enumerate(labels) if i not in all_test_indices])
 
-    train_layer = np.concatenate((train_layer, layer[test_indices[-1]+num_scene:,...,:]), axis=0)
+    try:
+        test_layer = layer[sub[0]:sub[0]+2,...,:]
+
+        for i in sub[1:]:
+            test_layer = np.concatenate((test_layer, layer[i:i+2,...,:]), axis=0)
+
+        train_layer = layer[:sub[0], ..., :]
+
+        for i in range(1, len(sub)):
+            train_layer = np.concatenate((train_layer, layer[sub[i - 1] + 2:sub[i], ..., :]),
+                                         axis=0)
+
+        train_layer = np.concatenate((train_layer, layer[sub[-1] + 2:, ..., :]), axis=0)
+
+    except IndexError:
+        test_layer = layer[sub[0]:sub[0] + 2]
+
+        for i in sub[1:]:
+            test_layer = np.concatenate((test_layer, layer[i:i + 2]), axis=0)
+
+        train_layer = layer[:sub[0]]
+
+        for i in range(1, len(sub)):
+            train_layer = np.concatenate((train_layer, layer[sub[i - 1] + 2:sub[i]]),
+                                         axis=0)
+
+        train_layer = np.concatenate((train_layer, layer[sub[-1] + 2:]), axis=0)
+
+
 
     return train_layer, test_layer, y_train, y_test
 
