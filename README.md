@@ -40,3 +40,6 @@ cross_val
 num_trials # number of times to run svm
 ```
 Ensure that the correct pooling layer is uncommented and the directories all align
+
+### Train VGG16 (on Moments in Time)
+Run vgg16_trainable_vid.py. Must update: path_save, start_from, path_start_np, path_save_np
