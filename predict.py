@@ -10,8 +10,6 @@ def pca(batch_size, vgg_layer, component=None):
     '''
     Takes a VGG16 layer and returns a transformed PCA version.
     
-    TODO: finalize
-    
     Parameters:
         - batch_size: int representing the total number of images
         - vgg_layer: numpy array representing a vgg16 layer
@@ -26,7 +24,8 @@ def pca(batch_size, vgg_layer, component=None):
     pca.fit(X)
     X_pca = pca.fit_transform(X)
 
-    # return X_pca if not component else X_pca[component]
+    # return pca.explained_variance_ratio_ # UTILIZE FOR VARIANCE EXPLAINED
+
     return X_pca if not component else X_pca[:,:component]
 
 def run_svm(layer, labels, num_trials, leave_out, cross_val=5):
@@ -87,9 +86,9 @@ def main(directory, img_paths, vgg_layers_path=None, num_trials=1,
     layers = getLayers(batch, batch_size, vgg_layers_path)
 
 
-    # variance_explained = {}
 
-    # TODO: PCA here save?
+    variance_explained = {}
+
     
     results = {}
     for layer_name, layer in layers.items():
@@ -113,17 +112,35 @@ def main(directory, img_paths, vgg_layers_path=None, num_trials=1,
     make_error_bar_plot(results, plot_title, fig_name)
 
 
+def plot_from_npy(filename, filename2):
+
+    after_mat = np.load(filename)
+    after_mat2 = np.load(filename2)
+
+    make_error_bar_plot_two(after_mat, after_mat2, "VGG-16 with top 50 components", "vgg_pca50.png")
+    
+
+    t_test_layer(after_mat)
+
+
+    print('HOLD OUT')
+
+    t_test_layer(after_mat2)
+
+
 if __name__ == '__main__':
     # MAKE SURE ALL PATHS ARE CORRECT
     directory = '/om/user/eeastman/interaction_images/'
     img_paths = directory + 'interaction_imgs.txt' # TEXT FILE WITH LIST OF IMAGE NAMES AND LABELS
                                                         # WHERE EACH LINE HAS "name_of_image.ext label"
-    vgg_layers_path = '/om/user/eeastman/layers/vgg/'
+    vgg_layers_path = '/om/user/eeastman/layers/vgg-ft/'
     
     # PARAMETERS
-    num_trials = 20
-    use_pca = False
+    num_trials = 1
+    use_pca = True
     pca_component_used = 49
     leave_out = False
 
+    #plot_from_npy('output_files/vgg_ft_random_pca50.npy', 'output_files/vgg_ft_hold-out_pca50.npy')
     main(directory, img_paths, vgg_layers_path, num_trials, use_pca, pca_component_used, leave_out)
+
