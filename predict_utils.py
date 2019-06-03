@@ -12,11 +12,19 @@ import csv
 import datetime
 import random
 
+from scipy import stats
+
 LAYER_NAMES = ['conv1_1', 'conv1_2', 'pool1', 'conv2_1', 'conv2_2', 'pool2', 
     'conv3_1', 'conv3_2', 'conv3_3', 'pool3', 
     'conv4_1', 'conv4_2', 'conv4_3', 'pool4', 
     'conv5_1', 'conv5_2', 'conv5_3', 'pool5', 
     'fc6', 'fc7', 'fc8']
+
+
+
+LAYER_NAMES = ['block 1', 'block 2', 'block 3', 'block 4']
+
+LAYER_NAMES = ['pool1', 'pool2', 'pool3', 'pool4', 'pool5']
 
 def loadImages(directory, img_paths):
     '''
@@ -117,7 +125,7 @@ def getLayers(batch, batch_size, vgg_layers_path):
             images = tf.placeholder("float", [batch_size, 224, 224, 3])
             feed_dict = {images: batch}
 
-            vgg = vgg16.Vgg16()
+            vgg = vgg16.Vgg16('./vgg16-save-5.npy')
             with tf.name_scope("content_vgg"):
                 vgg.build(images)
 
@@ -208,8 +216,8 @@ def write_accuracies(output_file, results):
     with open(output_file, 'w') as csv_file:
         writer = csv.writer(csv_file)
         for layer, accuracies in results.items():
-            # writer.writerow(accuracies)
-            writer.writerow([layer]+accuracies)
+            writer.writerow(accuracies)
+            #writer.writerow([layer]+accuracies)
 
 def make_error_bar_plot(results, title, fig_name):
     '''
@@ -228,8 +236,17 @@ def make_error_bar_plot(results, title, fig_name):
     means, error = [], []
     x_pos = np.arange(len(LAYER_NAMES))
     y_pos = np.array([0.5 for i in range(len(LAYER_NAMES))])
-    for key in LAYER_NAMES:
-        layer_list = results[key]
+    # for key in LAYER_NAMES:
+    #     layer_list = results[key]
+    #     layer_np = np.array(layer_list)
+        
+    #     means.append(np.mean(layer_np))
+    #     error.append(np.std(layer_np))
+    #indices = [2,5,9,13,17]
+    for i in range(len(LAYER_NAMES)):
+    #for i in indices:
+        layer_list = results[i]
+        print(layer_list.size)
         layer_np = np.array(layer_list)
         
         means.append(np.mean(layer_np))
@@ -249,6 +266,92 @@ def make_error_bar_plot(results, title, fig_name):
     # Save the figure and show
     plt.tight_layout()
     plt.savefig(fig_name)
+
+def make_error_bar_plot_two(results, results2, title, fig_name):
+    '''
+    Makes a bar plot of the accuracy for each layer with error bars over the trials.
+    Saves the plot to the "fig_name"
+
+    Parameters:
+        - results: dict where the key is layer name and value is a list of 
+            accuracies for each trial
+        - title: str representing the title of the error bar plot
+        - fig_name: str representing the file name (png) to save to
+
+    Returns:
+        None
+    '''
+    means, error = [], []
+    x_pos = np.arange(len(LAYER_NAMES))
+    y_pos = np.array([0.5 for i in range(len(LAYER_NAMES))])
+    # for key in LAYER_NAMES:
+    #     layer_list = results[key]
+    #     layer_np = np.array(layer_list)
+        
+    #     means.append(np.mean(layer_np))
+    #     error.append(np.std(layer_np))
+    indices = [2,5,9,13,17]
+    #for i in range(len(LAYER_NAMES)):
+    for i in indices:
+        layer_list = results[i]
+        layer_np = np.array(layer_list)
+        
+        means.append(np.mean(layer_np))
+        error.append(np.std(layer_np))
+
+    means2, error2 = [],[]
+
+    #for i in range(len(LAYER_NAMES)):
+    for i in indices:
+        layer_list = results2[i]
+        layer_np = np.array(layer_list)
+        
+        means2.append(np.mean(layer_np))
+        error2.append(np.std(layer_np))
+
+    # Build the plot
+    fig, ax = plt.subplots()
+    ax.bar(x_pos, means, yerr=error, align='center', alpha=0.5, ecolor='black', capsize=10)
+    ax.bar(x_pos, means2, yerr=error2, align='center', alpha=0.5, ecolor='black', capsize=10)
+    plt.plot(x_pos, y_pos, color='red', linestyle='dashed', linewidth=2)
+    ax.set_ylabel('Accuracy')
+    ax.set_xticks(x_pos)
+    plt.xticks(rotation=70)
+    ax.set_xticklabels(LAYER_NAMES)
+    ax.set_title(title)
+    ax.yaxis.grid(True)
+
+    # Save the figure and show
+    plt.tight_layout()
+    plt.savefig(fig_name)
+
+def t_test_layer(results):
+    chance_np = np.array([.5]*20)
+
+
+    result = []
+
+    indices = [2,5,9,13,17]
+    #for i in range(len(LAYER_NAMES)):
+    for i in indices:
+        layer_list = results[i]
+        layer_np = np.array(layer_list)
+
+        t, p = stats.ttest_ind(layer_np, chance_np)
+
+        p /= 2.0
+
+        result.append(p)
+
+    for i in range(len(LAYER_NAMES)):
+        print(LAYER_NAMES[i], result[i])
+
+
+    return result
+
+
+
+
 
 def build_names(num_trials, use_pca, component_used, leave_out, n=2):
     '''
