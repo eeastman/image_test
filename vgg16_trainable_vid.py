@@ -21,8 +21,10 @@ dropout = 0.5 # Dropout, probability to keep units
 training_iters = 1000
 step_display = 10
 step_save = 50
-path_save = '/om/user/eeastman/vgg16-moments/6-001'
-start_from = '/om/user/eeastman/vgg16-moments/5-001-100'
+path_save = ''
+start_from = ''
+path_start_np = ''
+path_save_np = ''
 
 # Construct dataloader
 opt_data_train = {
@@ -54,7 +56,7 @@ keep_dropout = tf.placeholder(tf.float32)
 train_phase = tf.placeholder(tf.bool)
 
 # Construct model
-vgg = vgg16.Vgg16('./vgg16-save-4.npy')
+vgg = vgg16.Vgg16(path_save_np)
 vgg.build(x, train_phase)
 #logits = vgg16(x, keep_dropout, train_phase)
 logits = vgg.fc8
@@ -118,7 +120,7 @@ with tf.Session() as sess:
             saver.save(sess, path_save, global_step=step)
             print("Model saved at Iter %d !" %(step))
 
-            vgg.save_npy(sess, './vgg16-save-5.npy')
+            vgg.save_npy(sess, path_save_np)
         
     print("Optimization Finished!")
 
